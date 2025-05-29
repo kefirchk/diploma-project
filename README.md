@@ -49,7 +49,7 @@ Alternatively, launch the full stack using Docker Compose.
 
 ## 📸 Demo
 
-![demo](demo/demo.mp4)
+![demo](demo/demo.gif)
 
 ## 👨‍🎓 Author
 __Alexey Klimovich__ \
