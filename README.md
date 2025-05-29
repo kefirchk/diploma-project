@@ -17,6 +17,8 @@ The project is split into three main components:
 - [`Animatica-backend`](https://github.com/kefirchk/Animatica-backend): FastAPI backend for API routing, user management, and orchestration.
 - [`Animatica-ml-engine`](https://github.com/kefirchk/Animatica-ml-engine): Python-based ML engine for image animation.
 
+![system design](demo/system%20design.png)
+
 ## 🧠 Key Features
 
 - 🔍 Automatic image animation
