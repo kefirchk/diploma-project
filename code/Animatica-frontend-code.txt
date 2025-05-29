@@ -1,0 +1,1854 @@
+
+# Файл ".pre-commit-config.yaml":
+
+repos:
+  - repo: https://github.com/pre-commit/mirrors-isort
+    rev: v5.10.1
+    hooks:
+      - id: isort
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+
+
+
+# Файл "pyproject.toml":
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+multi_line_output = 3
+include_trailing_comma = true
+
+
+
+# Файл "app\.streamlit\config.toml":
+
+[server]
+maxUploadSize = 20
+
+
+
+# Файл "app\src\main.py":
+
+import streamlit as st
+from services.auth import AuthService
+from services.payment import PaymentService
+from services.resource import ResourceService
+from views import about_page, auth_page, home_page, pricing_page
+
+ResourceService.load_styles("sidebar.css")
+credit_card_template = ResourceService.load_template("sidebar/credit_card.html")
+
+
+def render_sidebar():
+    with st.sidebar:
+        st.logo("src/assets/images/animatica_logo.png", size="large")
+
+        if st.session_state.logged_in:
+            remaining_queries = PaymentService.get_query_balance()
+            st.markdown(credit_card_template.format(credits=remaining_queries), unsafe_allow_html=True)
+
+            if st.button(
+                "Logout",
+                help="Logout from your account",
+                type="primary",
+                use_container_width=True,
+                key="sidebar_logout",
+                icon=":material/logout:",
+            ):
+                AuthService.logout()
+
+        st.markdown("---")
+        st.caption("Made with ❤️ by [kefirchk](https://github.com/kefirchk)")
+
+
+def main():
+    AuthService.check_auth()
+
+    if st.session_state.logged_in:
+        pg = st.navigation(pages=[home_page, pricing_page, about_page])
+        pg.run()
+    else:
+        st.navigation(pages=[auth_page])
+        auth_page.run()
+
+    render_sidebar()
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+# Файл "app\src\__init__.py":
+
+
+
+
+# Файл "app\src\assets\styles\about.css":
+
+:root {
+    --primary: #4361ee;
+    --secondary: #3f37c9;
+    --light: #f8f9fa;
+    --dark: #212529;
+    --radius: 12px;
+}
+
+.main-container {
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.page-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.page-header h1 {
+    color: var(--primary);
+    font-size: 2.2rem;
+    margin-bottom: 10px;
+}
+
+.page-header p {
+    color: var(--dark);
+    opacity: 0.8;
+}
+
+.content-card {
+    background: white;
+    border-radius: var(--radius);
+    padding: 30px;
+    margin-bottom: 30px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+}
+
+.content-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(67, 97, 238, 0.1);
+}
+
+.section-title {
+    color: var(--primary);
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid rgba(67, 97, 238, 0.2);
+}
+
+.image-text-wrapper {
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
+}
+
+.image-container {
+    flex: 0 0 250px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+}
+
+.image-container:hover {
+    transform: scale(1.03);
+}
+
+.image-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.text-content {
+    flex: 1;
+    color: var(--dark);
+    line-height: 1.6;
+}
+
+.feature-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.feature-item {
+    background: rgba(67, 97, 238, 0.05);
+    padding: 15px;
+    border-radius: var(--radius);
+    border-left: 3px solid var(--primary);
+    transition: all 0.3s ease;
+}
+
+.feature-item:hover {
+    background: rgba(67, 97, 238, 0.1);
+    transform: translateX(5px);
+}
+
+.contact-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.contact-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    background: rgba(67, 97, 238, 0.05);
+    border-radius: var(--radius);
+    color: var(--primary);
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.contact-link:hover {
+    background: rgba(67, 97, 238, 0.1);
+    transform: translateY(-2px);
+}
+
+.contact-icon {
+    width: 20px;
+    height: 20px;
+}
+
+@media (max-width: 768px) {
+    .image-text-wrapper {
+        flex-direction: column;
+    }
+
+    .image-container {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    .feature-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+
+# Файл "app\src\assets\styles\auth.css":
+
+:root {
+    --primary: #4361ee;
+    --secondary: #3f37c9;
+    --light: #f8f9fa;
+    --dark: #212529;
+    --success: #4BB543;
+    --error: #FF4141;
+    --radius: 12px;
+}
+
+.main-container {
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.auth-column {
+    flex: 1;
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    padding: 40px;
+    border-radius: var(--radius);
+    background: white;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.05);
+    transform-style: preserve-3d;
+    min-height: 100%;
+}
+
+.auth-column:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 15px 30px rgba(67, 97, 238, 0.1);
+    border-color: rgba(67, 97, 238, 0.2);
+}
+
+.forms-wrapper:hover .auth-column:not(:hover) {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+    pointer-events: none;
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.auth-header h2 {
+    color: var(--primary);
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+}
+
+.auth-header p {
+    color: var(--dark);
+    opacity: 0.8;
+    font-size: 1rem;
+}
+
+.stTextInput>div>div>input,
+.stTextInput>div>div>input:focus {
+    width: 100%;
+    padding: 12px 15px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(0,0,0,0.1);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    background-color: var(--light);
+}
+
+.stTextInput>div>div>input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.2);
+}
+
+.stButton>button {
+    width: 100%;
+    padding: 12px;
+    font-size: 1rem;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    background-color: var(--primary);
+    color: white;
+}
+
+.stButton>button:hover {
+    background-color: var(--secondary);
+}
+
+@media (max-width: 768px) {
+    .forms-wrapper {
+        flex-direction: column;
+    }
+
+    .forms-wrapper:hover .auth-column:not(:hover) {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+    }
+}
+
+
+
+# Файл "app\src\assets\styles\home.css":
+
+:root {
+    --primary: #4361ee;
+    --secondary: #3f37c9;
+    --light: #f8f9fa;
+    --dark: #212529;
+    --success: #4BB543;
+    --radius: 12px;
+}
+
+.generation-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.generation-header h1 {
+    color: var(--primary);
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+
+.generation-header h3 {
+    color: var(--dark);
+    opacity: 0.8;
+    font-size: 1.3rem;
+    font-weight: 400;
+}
+
+@media (max-width: 768px) {
+    .generation-header h1 {
+        font-size: 2rem;
+    }
+
+    .generation-header h3 {
+        font-size: 1.1rem;
+    }
+}
+
+.subscription-required {
+    text-align: center;
+    background: white;
+    border-radius: var(--radius);
+    padding: 40px;
+    margin: 50px auto;
+    max-width: 600px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.subscription-icon {
+    font-size: 3rem;
+    color: var(--primary);
+    margin-bottom: 20px;
+}
+
+.subscription-title {
+    color: var(--dark);
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.subscription-text {
+    color: var(--dark);
+    opacity: 0.8;
+    margin-bottom: 25px;
+    font-size: 1.1rem;
+}
+
+.button-container {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+}
+
+.subscription-btn {
+    min-width: 180px;
+}
+
+div[data-testid="stFileUploader"] {
+    background-color: #f0f4ff;
+    border: 2px dashed #1E90FF;
+    padding: 1em;
+    border-radius: 12px;
+    color: #1E90FF;
+    text-align: center;
+    transition: 0.3s;
+    margin-bottom: 1rem;
+}
+
+div[data-testid="stFileUploader"]:hover {
+    border-color: #104E8B;
+    background-color: #e6efff;
+}
+
+
+
+# Файл "app\src\assets\styles\pricing.css":
+
+:root {
+    --primary: #4361ee;
+    --secondary: #3f37c9;
+    --light: #f8f9fa;
+    --dark: #212529;
+    --success: #4BB543;
+    --radius: 12px;
+}
+
+.subscription-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.subscription-header h1 {
+    color: var(--primary);
+    font-size: 2.2rem;
+    margin-bottom: 10px;
+}
+
+.subscription-header p {
+    color: var(--dark);
+    opacity: 0.8;
+    font-size: 1.1rem;
+}
+
+.plan-cards {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+    justify-content: center;
+}
+
+.plan-card {
+    flex: 1;
+    min-width: 220px;
+    max-width: 280px;
+    border-radius: var(--radius);
+    padding: 25px 20px;
+    background: white;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.plan-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+.plan-card.selected {
+    border: 2px solid var(--primary);
+    background: rgba(67, 97, 238, 0.03);
+}
+
+.plan-name {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--dark);
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+.plan-price {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary);
+    text-align: center;
+    margin-bottom: 5px;
+}
+
+.plan-discount {
+    color: #FF4141;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+.plan-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.plan-feature {
+    margin-bottom: 10px;
+    padding-left: 25px;
+    position: relative;
+    font-size: 0.95rem;
+}
+
+.plan-feature:before {
+    content: "✓";
+    color: var(--success);
+    position: absolute;
+    left: 0;
+    font-weight: bold;
+}
+
+.selection-message {
+    text-align: center;
+    font-size: 1.1rem;
+    margin: 20px 0;
+    padding: 15px;
+    background: rgba(75, 181, 67, 0.1);
+    color: var(--success);
+    border-radius: var(--radius);
+    border: 1px solid rgba(75, 181, 67, 0.2);
+}
+
+@media (max-width: 768px) {
+    .plan-cards {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .plan-card {
+        width: 100%;
+        max-width: 320px;
+    }
+}
+
+.button, .button:link, .button:visited {
+  font-size: 18px;
+  background-color: #f44336;
+  color: white;
+  padding: 14px 25px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  border: none;
+  border-radius: 4px;
+  -webkit-animation: bounce .6s infinite alternate;
+  -moz-animation: bounce .6s infinite alternate;
+  animation: bounce .6s infinite alternate;
+}
+
+@-webkit-keyframes bounce {
+  to { -webkit-transform: scale(1.1); }
+}
+@-moz-keyframes bounce {
+  to { -moz-transform: scale(1.1); }
+}
+@keyframes bounce {
+  to { transform: scale(1.1); }
+}
+
+.button:hover, .button:active {
+  background-color: red;
+}
+
+
+
+# Файл "app\src\assets\styles\sidebar.css":
+
+.credit-card {
+    padding: 1rem;
+    margin: 0.5rem 0 1.5rem;
+    border-radius: 8px;
+    background: #f8fafc;
+    border-left: 4px solid #4ade80;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.credit-card-header {
+    font-size: 0.9rem;
+    color: #64748b;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.credit-card-value {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.credit-amount {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.credit-label {
+    font-size: 1rem;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+
+
+# Файл "app\src\configs\api.py":
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class APIConfig(BaseSettings):
+    BASE_URL: str = Field(..., alias="API_URL")
+    TERMS_OF_SERVICE_URL: str = Field(..., alias="TERMS_OF_SERVICE_URL")
+
+    model_config = SettingsConfigDict(env_file="../env/api.env")
+
+
+
+# Файл "app\src\configs\auth.py":
+
+from configs.api import APIConfig
+from pydantic_settings import BaseSettings
+
+
+class AuthConfig(BaseSettings):
+    TERMS_OF_SERVICE: str = f"""
+    **Terms of Service**
+    
+    By creating an account, you agree to our Terms of Service and Privacy Policy:
+    
+    1. You are responsible for maintaining the confidentiality of your account
+    2. You must be at least 13 years old to use this service
+    3. You agree not to use the service for illegal activities
+    4. We may terminate accounts that violate our terms
+    5. All content you generate must comply with our community guidelines
+    
+    [View full Terms of Service]({APIConfig().TERMS_OF_SERVICE_URL})
+    """
+
+
+
+# Файл "app\src\configs\home.py":
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+
+class HomeConfig(BaseSettings):
+    ALLOWED_IMAGE_TYPES: list = ["jpg", "jpeg", "png"]
+    ALLOWED_VIDEO_TYPES: list = ["mp4", "mov", "avi"]
+    MESSAGE_DELAY: int = Field(3)
+
+
+
+# Файл "app\src\configs\pricing.py":
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+
+class PricingConfig(BaseSettings):
+    MESSAGE_DELAY: int = Field(3)
+
+
+
+# Файл "app\src\configs\__init__.py":
+
+from .api import APIConfig
+from .auth import AuthConfig
+from .home import HomeConfig
+
+
+
+# Файл "app\src\renders\auth.py":
+
+import streamlit as st
+from configs import AuthConfig
+from services.auth import AuthService
+
+
+class AuthRender:
+    def __init__(self, templates: dict):
+        self.templates = templates
+        self.auth_service = AuthService()
+        self.auth_config = AuthConfig()
+        self._init_session_state()
+
+    @staticmethod
+    def _init_session_state():
+        st.session_state.setdefault("login_error", "")
+        st.session_state.setdefault("register_error", "")
+        st.session_state.setdefault("register_success", "")
+
+    def render_login_form(self):
+        with st.form("login_form"):
+            st.markdown(self.templates["login_column"], unsafe_allow_html=True)
+
+            username = st.text_input("Username", key="login_username")
+            password = st.text_input("Password", type="password", key="login_password")
+
+            if st.form_submit_button("Login", type="primary", use_container_width=True):
+                if self.auth_service.login(username, password):
+                    st.rerun()
+
+            if st.session_state.login_error:
+                st.error(st.session_state.login_error)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    def render_register_form(self):
+        with st.form("register_form"):
+            st.markdown(self.templates["register_column"], unsafe_allow_html=True)
+
+            new_username = st.text_input("Username", key="reg_username")
+            new_password = st.text_input("Password", type="password", key="reg_password")
+            confirm_password = st.text_input("Confirm Password", type="password", key="reg_confirm_password")
+
+            tos_accepted = st.checkbox(
+                "I agree to the Terms of Service",
+                key="tos_checkbox",
+                help="You must accept the Terms of Service to register",
+            )
+
+            with st.expander("View Terms of Service", icon=":material/description:"):
+                st.markdown(self.auth_config.TERMS_OF_SERVICE, unsafe_allow_html=True)
+
+            if st.form_submit_button("Register", type="primary", use_container_width=True):
+                if not tos_accepted:
+                    st.session_state.register_error = "You must accept the Terms of Service"
+                elif self.auth_service.register(new_username, new_password, confirm_password):
+                    st.rerun()
+
+            if st.session_state.register_error:
+                st.error(st.session_state.register_error)
+            elif st.session_state.register_success:
+                st.success(st.session_state.register_success)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+# Файл "app\src\renders\home.py":
+
+import base64
+import time
+
+import numpy as np
+import streamlit as st
+from configs import HomeConfig
+from PIL import Image
+from renders.utils import centered_button, resize_and_center
+from services.animation import AnimationService
+from services.cookie import CookieService
+from services.payment import PaymentService
+
+
+class HomeRender:
+    def __init__(self, templates: dict):
+        self.templates = templates
+        self.animation_service = AnimationService()
+        self.home_config = HomeConfig()
+        query_balance = PaymentService.get_query_balance()
+        CookieService.controller.set("query_balance", query_balance, max_age=31556925)
+        self._init_session_state()
+
+    @staticmethod
+    def _init_session_state():
+        st.session_state.setdefault("animation_result", None)
+        st.session_state.setdefault("source_image", None)
+        st.session_state.setdefault("driving_video", None)
+
+    @centered_button()
+    def render_subscription_required(self):
+        st.markdown(self.templates["subscription"], unsafe_allow_html=True)
+        if st.button("View Plans", type="primary", help="See subscription options", use_container_width=True):
+            st.switch_page("views/pricing.py")
+
+    def render_image_upload(self, target_width: int = 320):
+        uploaded_image = st.file_uploader(
+            "Upload source image",
+            type=self.home_config.ALLOWED_IMAGE_TYPES,
+            key="source_uploader",
+            label_visibility="collapsed",
+        )
+        if uploaded_image:
+            st.session_state.source_image = uploaded_image.read()
+            img_np = np.array(Image.open(uploaded_image).convert("RGB"))
+            resized = resize_and_center(img_np)
+            st.image(resized, width=target_width, caption="Source Image")
+
+    def render_video_upload(self):
+        uploaded_video = st.file_uploader(
+            "Upload driving video",
+            type=self.home_config.ALLOWED_VIDEO_TYPES,
+            key="video_uploader",
+            label_visibility="collapsed",
+        )
+        if uploaded_video:
+            st.session_state.driving_video = uploaded_video.read()
+            st.markdown(
+                self.templates["driving_video"].format(
+                    video_b64=base64.b64encode(st.session_state.driving_video).decode(),
+                    target_width=320,
+                    target_height=240,
+                ),
+                unsafe_allow_html=True,
+            )
+
+    @centered_button(3)
+    def render_generate_button(self):
+        if st.button(
+            "Generate Animation",
+            type="primary",
+            use_container_width=True,
+            disabled=not st.session_state.source_image or not st.session_state.driving_video,
+            icon=":material/animated_images:",
+        ):
+            self._process_generation_request()
+
+    def _process_generation_request(self):
+        if not st.session_state.source_image or not st.session_state.driving_video:
+            st.error("Please provide both source image and driving video")
+            return
+
+        with st.spinner("⏳ Generating animation... Please wait."):
+            response = self.animation_service.generate_animation(
+                {
+                    "source_image": ("source.jpg", st.session_state.source_image, "image/jpeg"),
+                    "driving_video": ("driving.mp4", st.session_state.driving_video, "video/mp4"),
+                }
+            )
+
+        st.session_state.source_image = None
+        st.session_state.driving_video = None
+
+        if response["success"]:
+            st.session_state.animation_result = response["animation_data"]
+            st.success("✅ Animation generated successfully!")
+            time.sleep(3)
+            st.rerun()
+        else:
+            st.error(f"❌ Animation generation failed: {response['message']}")
+
+    @centered_button(3)
+    def render_download_button(self):
+        st.download_button(
+            label="Download Video",
+            type="primary",
+            data=st.session_state.animation_result,
+            file_name="generated_animation.mp4",
+            mime="video/mp4",
+            use_container_width=True,
+            icon=":material/download:",
+        )
+
+
+
+# Файл "app\src\renders\pricing.py":
+
+import time
+
+import streamlit as st
+from configs import APIConfig
+from configs.pricing import PricingConfig
+from services.auth import AuthService
+from services.cookie import CookieService
+from services.payment import PaymentService
+from streamlit.delta_generator import DeltaGenerator
+
+
+class PricingRender:
+    def __init__(self, templates: dict) -> None:
+        self.templates = templates
+        self.auth_service = AuthService()
+        self.payment_service = PaymentService()
+        self.cookie = CookieService.controller
+        self.api_config = APIConfig()
+        self.pricing_config = PricingConfig()
+        self._init_session_state()
+        self._handle_payment_callback()
+        self.stripe_public_key, self.products = self._load_products()
+
+    @staticmethod
+    def _init_session_state() -> None:
+        st.session_state.setdefault("selected_product_id", None)
+        st.session_state.setdefault("selected_price_id", None)
+
+    def _handle_payment_callback(self) -> None:
+        def reload():
+            st.query_params.clear()
+            time.sleep(self.pricing_config.MESSAGE_DELAY)
+            st.rerun()
+
+        if st.query_params.get("success") == "true":
+            st.success("✅ Payment was successful! Thank you for your purchase!")
+            if self.cookie.get("session_id") and self.cookie.get("product_id"):
+                self.payment_service.make_payment()
+                reload()
+
+        elif st.query_params.get("canceled") == "true":
+            st.warning("❌ Payment canceled")
+            reload()
+
+    def _load_products(self) -> tuple[str, list]:
+        response = self.auth_service.make_authenticated_request(
+            "GET", f"{self.api_config.BASE_URL}/api/v0/subscriptions/limited"
+        )
+        data = response.json()
+        return data.get("public_key"), data.get("data", [])
+
+    def _select_product(self, product_id: str, price_id: str) -> None:
+        st.session_state.selected_product_id = product_id
+        st.session_state.selected_price_id = price_id
+        self.cookie.set("price_id", price_id, max_age=31556925)
+
+    def render_plan_card(self, product: dict, col: DeltaGenerator) -> None:
+        with col:
+            product_id = product["id"]
+            price_id = product["default_price"]["id"]
+            is_selected = st.session_state.selected_product_id == product_id
+
+            st.button(
+                product["name"].removeprefix("Animatica "),
+                key=f"plan_btn_{product_id}",
+                type="primary" if is_selected else "secondary",
+                use_container_width=True,
+                on_click=self._select_product,
+                args=(product_id, price_id),
+            )
+
+            features_html = "".join(
+                f'<li class="plan-feature">{feature["name"]}</li>' for feature in product["marketing_features"]
+            )
+
+            st.markdown(
+                self.templates["plan_card"].format(
+                    card_class="plan-card selected" if is_selected else "plan-card",
+                    plan_name=product["name"].removeprefix("Animatica "),
+                    price=f"${product['default_price']['unit_amount'] / 100}",
+                    discount=(
+                        f"Discount {product['default_price']['metadata'].get('discount', '')}%"
+                        if product["default_price"]["metadata"].get("discount")
+                        else ""
+                    ),
+                    features=features_html,
+                ),
+                unsafe_allow_html=True,
+            )
+
+    def render_subscribe_button(self, selected_product: dict) -> None:
+        st.markdown(
+            self.templates["selection"].format(selected_plan=selected_product["name"]),
+            unsafe_allow_html=True,
+        )
+
+        response = self.auth_service.make_authenticated_request(
+            "POST",
+            f"{self.api_config.BASE_URL}/api/v0/payments/checkout-session",
+            params={"price_id": st.session_state.selected_price_id},
+        )
+        self.cookie.set("product_id", st.session_state.selected_product_id, max_age=31556925)
+
+        if response.status_code == 200:
+            checkout_session = response.json()["checkout_session"]
+            template = self.templates["checkout_button"].format(url=checkout_session["url"])
+            st.markdown(template, unsafe_allow_html=True)
+            self.cookie.set("session_id", checkout_session["id"], max_age=60)
+
+        elif response.status_code == 401:
+            self.auth_service.logout()
+            st.switch_page("views/auth.py")
+
+        else:
+            error_msg = response.json().get("detail", "Unknown payment error")
+            st.error(f"Payment error: {error_msg}")
+
+
+
+# Файл "app\src\renders\utils.py":
+
+from functools import wraps
+
+import streamlit as st
+from numpy import ndarray
+from PIL import Image
+
+
+def centered_button(columns_config=None):
+    if columns_config is None:
+        columns_config = [1, 2, 1]
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            _, col2, _ = st.columns(columns_config)
+            with col2:
+                return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def resize_and_center(image_np: ndarray, target_width: int = 320, target_height: int = 240):
+    image = Image.fromarray(image_np)
+    image.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
+    new_img = Image.new("RGB", (target_width, target_height), (255, 255, 255))
+    paste_x = (target_width - image.width) // 2
+    paste_y = (target_height - image.height) // 2
+    new_img.paste(image, (paste_x, paste_y))
+    return new_img
+
+
+
+# Файл "app\src\renders\__init__.py":
+
+
+
+
+# Файл "app\src\services\animation.py":
+
+from configs import APIConfig
+from services.auth import AuthService
+
+
+class AnimationService:
+    def __init__(self) -> None:
+        self.api_url = APIConfig().BASE_URL
+        self.auth_service = AuthService()
+
+    def generate_animation(self, files: dict) -> dict:
+        try:
+            response = self.auth_service.make_authenticated_request(
+                "POST",
+                f"{self.api_url}/api/v0/animation/video",
+                files=files,
+                timeout=1200,
+            )
+            response.raise_for_status()
+            return {"success": True, "animation_data": response.content, "message": "OK"}
+        except Exception as e:
+            return {"success": False, "animation_data": None, "message": str(e)}
+
+
+
+# Файл "app\src\services\auth.py":
+
+import requests
+import streamlit as st
+from configs.api import APIConfig
+from services.cookie import CookieService
+
+
+class AuthService:
+    api_config = APIConfig()
+
+    @staticmethod
+    def check_auth():
+        if "logged_in" not in st.session_state:
+            auth_data = CookieService.get_auth_cookies()
+            if auth_data:
+                try:
+                    st.session_state.update(
+                        {
+                            "logged_in": True,
+                            "username": auth_data.get("username", ""),
+                            "access_token": auth_data["access_token"],
+                            "refresh_token": auth_data["refresh_token"],
+                        }
+                    )
+                except:
+                    CookieService.clear_auth_cookies()
+                    st.session_state.logged_in = False
+            else:
+                st.session_state.logged_in = False
+
+    @classmethod
+    def login(cls, username: str, password: str) -> bool:
+        try:
+            response = requests.post(
+                f"{cls.api_config.BASE_URL}/api/v0/auth/login", json={"username": username, "password": password}
+            )
+
+            if response.status_code == 200:
+                token_data = response.json()
+                token_data["username"] = username
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                CookieService.set_auth_cookies(token_data)
+                st.session_state.login_error = ""
+                return True
+            else:
+                error_msg = (
+                    response.json()["detail"][0]["msg"] if isinstance(response.json(), dict) else response.json()
+                )
+                st.session_state.login_error = error_msg
+                return False
+        except requests.exceptions.RequestException as e:
+            st.session_state.login_error = f"Connection error: {str(e)}"
+            return False
+
+    @classmethod
+    def register(cls, username: str, password: str, confirm_password: str) -> bool:
+        if password != confirm_password:
+            st.session_state.register_error = "Passwords don't match"
+            return False
+
+        try:
+            response = requests.post(
+                f"{cls.api_config.BASE_URL}/api/v0/auth/signup", json={"username": username, "password": password}
+            )
+
+            if response.status_code == 201:
+                st.session_state.register_error = ""
+                st.session_state.register_success = "Registration successful! Please login."
+                return True
+            else:
+                error_msg = (
+                    response.json()["detail"][0]["msg"] if isinstance(response.json(), dict) else response.json()
+                )
+                st.session_state.register_error = error_msg
+                return False
+        except requests.exceptions.RequestException as e:
+            st.session_state.register_error = f"Connection error: {str(e)}"
+            return False
+
+    @staticmethod
+    def logout():
+        st.session_state.logged_in = False
+        CookieService.clear_auth_cookies()
+        st.rerun()
+
+    @staticmethod
+    def make_authenticated_request(method: str, url: str, **kwargs):
+        headers = CookieService.get_auth_headers()
+        if "headers" in kwargs:
+            headers.update(kwargs["headers"])
+        kwargs["headers"] = headers
+
+        try:
+            response = requests.request(method, url, **kwargs)
+            if response.status_code == 401:
+                CookieService.clear_auth_cookies()
+                st.session_state.logged_in = False
+            return response
+        except requests.exceptions.RequestException as e:
+            st.error(f"Connection error: {str(e)}")
+            return None
+
+
+
+# Файл "app\src\services\cookie.py":
+
+from streamlit_cookies_controller import CookieController
+
+
+class CookieService:
+    controller = CookieController()
+
+    @classmethod
+    def set_auth_cookies(cls, token_data: dict):
+        cls.controller.set("auth_data", token_data)
+
+    @classmethod
+    def get_auth_cookies(cls) -> dict | None:
+        auth_data = cls.controller.get("auth_data")
+        return auth_data
+
+    @classmethod
+    def clear_auth_cookies(cls):
+        if cls.controller.get("auth_data"):
+            cls.controller.remove("auth_data")
+        if cls.controller.get("query_balance"):
+            cls.controller.remove("query_balance")
+
+    @classmethod
+    def get_auth_headers(cls) -> dict:
+        auth_data = cls.controller.get("auth_data")
+        if auth_data and "access_token" in auth_data:
+            return {"Authorization": f'Bearer {auth_data["access_token"]}'}
+        return {}
+
+
+
+# Файл "app\src\services\payment.py":
+
+import time
+
+import streamlit as st
+from configs.api import APIConfig
+from configs.pricing import PricingConfig
+from services.auth import AuthService
+from services.cookie import CookieService
+
+
+class PaymentService:
+    api_config = APIConfig()
+    pricing_config = PricingConfig()
+
+    @classmethod
+    def get_query_balance(cls):
+        current_subscription_response = AuthService.make_authenticated_request(
+            "GET",
+            f"{cls.api_config.BASE_URL}/api/v0/subscriptions/current",
+        )
+        if current_subscription_response.status_code == 200:
+            subscription = current_subscription_response.json()["subscription"]
+            remaining_queries = subscription.get("remaining_queries", 0) if subscription else 0
+            return remaining_queries
+        else:
+            st.error("Can't get remaining queries!")
+            AuthService.logout()
+
+    @classmethod
+    def make_payment(cls):
+        response = AuthService.make_authenticated_request(
+            "POST",
+            f"{cls.api_config.BASE_URL}/api/v0/payments",
+            json={
+                "session_id": CookieService.controller.get("session_id"),
+                "product_id": CookieService.controller.get("product_id"),
+            },
+        )
+        if response.status_code == 200:
+            data = response.json()
+            CookieService.controller.set("query_balance", data["remaining_queries"], max_age=31556925)
+        else:
+            st.error(f"Payment failed: {response.json()}")
+            time.sleep(cls.pricing_config.MESSAGE_DELAY)
+
+
+
+# Файл "app\src\services\resource.py":
+
+import base64
+from pathlib import Path
+
+import streamlit as st
+
+
+class ResourceService:
+    """Loader of application resources (styles, templates, images)"""
+
+    @staticmethod
+    def load_styles(style_name: str):
+        css_path = Path(__file__).parent.parent / "assets" / "styles" / style_name
+        with open(css_path, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+    @staticmethod
+    def load_template(template_name: str):
+        template_path = Path(__file__).parent.parent / "templates" / template_name
+        with open(template_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @staticmethod
+    def load_image(image_name: str):
+        image_path = Path(__file__).parent.parent / "assets" / "images" / image_name
+        with open(image_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+
+
+
+# Файл "app\src\services\__init__.py":
+
+
+
+
+# Файл "app\src\templates\about\about.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Page Title -->
+        <div class="page-header">
+            <h1>About Animatica</h1>
+            <p>Transforming static content into dynamic experiences</p>
+        </div>
+        <!-- Content with image -->
+        <div class="content-card">
+            <div class="image-text-wrapper">
+                <div class="image-container">
+                    <img src='data:image/svg+xml;base64,{image_base64}' alt='Animatica Logo' />
+                </div>
+                <div class="text-content">
+                    <p>
+                        Animatica is a diploma project that transforms static images into animated videos
+                        using AI technology. The application allows you to either upload an image or provide
+                        a text description, and it will generate a smooth animation as output.
+                    </p>
+                    <p>
+                        This project demonstrates practical applications of neural networks for content creation.
+                        The system automatically processes your input, applies animation effects, and produces
+                        a video file that brings your static images to life.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <!-- Key Features -->
+        <div class="content-card">
+            <h2 class="section-title">Key Features</h2>
+            <div class="feature-list">
+                <div class="feature-item">
+                    <h3>Text-to-Video</h3>
+                    <p>Generate short video animations from text descriptions using AI</p>
+                </div>
+                <div class="feature-item">
+                    <h3>Image Animation</h3>
+                    <p>Bring static images to life by adding motion effects</p>
+                </div>
+                <div class="feature-item">
+                    <h3>Simple Interface</h3>
+                    <p>Easy-to-use controls for basic customization of results</p>
+                </div>
+                <div class="feature-item">
+                    <h3>Fast Processing</h3>
+                    <p>Quick generation times for most standard requests</p>
+                </div>
+            </div>
+        </div>
+        <!-- Development Team -->
+        <div class="content-card">
+            <h2 class="section-title">Development Team</h2>
+            <div class="text-content">
+                <p>
+                    This innovative application was developed by <strong>{developer_name}</strong>,
+                    a {developer_info}.
+                </p>
+                <p>
+                    The project represents the culmination of extensive research in artificial intelligence
+                    and computer graphics, serving as my diploma work. The development process incorporated
+                    modern software engineering practices, including agile methodology, continuous integration,
+                    and user experience testing.
+                </p>
+            </div>
+        </div>
+        <!-- Contact Information -->
+        <div class="content-card">
+            <h2 class="section-title">Contact Information</h2>
+            <div class="text-content">
+                <p>We welcome your feedback, questions, and collaboration opportunities.</p>
+                <div class="contact-links">
+                    <a href="{email_link}" class="contact-link">
+                        <svg class="contact-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#4361ee">
+                            <path d="M12 12.713l-11.985-9.713h23.97l-11.985 9.713zm0 2.574l-12-9.725v15.438h24v-15.438l-12 9.725z"/>
+                        </svg>
+                        Email
+                    </a>
+                    <a href="{telegram_link}" class="contact-link" target="_blank">
+                        <svg class="contact-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#4361ee">
+                            <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/>
+                        </svg>
+                        Telegram
+                    </a>
+                    <a href="{linkedin_link}" class="contact-link" target="_blank">
+                        <svg class="contact-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#4361ee">
+                            <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-2 16h-2v-6h2v6zm-1-6.891c-.607 0-1.1-.496-1.1-1.109 0-.612.492-1.109 1.1-1.109s1.1.497 1.1 1.109c0 .613-.493 1.109-1.1 1.109zm8 6.891h-1.998v-2.861c0-1.881-2.002-1.722-2.002 0v2.861h-2v-6h2v1.093c.872-1.616 4-1.736 4 1.548v3.359z"/>
+                        </svg>
+                        LinkedIn
+                    </a>
+                </div>
+                <p style="margin-top: 20px;">
+                    For technical support or feature requests, please include detailed information
+                    about your inquiry to help us serve you better.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\auth\header.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="auth-header" style="margin-bottom: 50px;">
+        <h2>Welcome to Animatica</h2>
+        <p>Sign in or create an account to continue</p>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\auth\login_column.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="auth-column">
+        <div class="auth-header">
+            <h2>Sign In</h2>
+            <p>Login to your account</p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\auth\main_container.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="main-container"></div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\auth\register_column.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="auth-column">
+        <div class="auth-header">
+            <h2>Sign Up</h2>
+            <p>Create new account</p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\home\driving_video.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div style="text-align:center;">
+        <video width="{target_width}" height="{target_height}" controls autoplay muted loop style="border-radius: 6px; margin-bottom: 0.5rem;">
+            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <div style="font-size: 0.9rem; color: gray;">Driving Video</div>
+    </div>
+</body>
+</html>
+
+
+# Файл "app\src\templates\home\generation_header.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="generation-header">
+        <h1>Animatica</h1>
+        <h3>Generate videos from text and images using neural networks</h3>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\home\subscription_required.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="subscription-required">
+        <div class="subscription-icon">🔒</div>
+        <h2 class="subscription-title">Unlock Image Animation</h2>
+        <p class="subscription-text">
+            To access image animation features, please choose a subscription plan that fits your needs.
+        </p>
+        <div class="button-container">
+            <div class="subscription-btn">
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\pricing\checkout_button.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div style="display: flex; justify-content: center; margin: 20px 0;">
+        <form action="{url}" method="GET" target="_self">
+            <button type="submit" class="button">
+                Subscribe Now
+            </button>
+        </form>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\pricing\header.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="subscription-header">
+        <h1>Choose Your Plan</h1>
+        <p>Select the subscription that fits your needs</p>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\pricing\plan_card.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="{card_class}">
+        <h3 class="plan-name">{plan_name}</h3>
+        <div class="plan-price">{price}</div>
+        <div class="plan-discount">{discount}</div>
+        <ul class="plan-features">
+            {features}
+        </ul>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\pricing\selection_message.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="selection-message">
+        You selected: <strong>{selected_plan}</strong>
+    </div>
+</body>
+</html>
+
+
+
+# Файл "app\src\templates\sidebar\credit_card.html":
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+    <div class="credit-card">
+        <div class="credit-card-header">
+            Your Credits
+        </div>
+        <div class="credit-card-value">
+            <span class="credit-amount">{credits}</span>
+            <span class="credit-label">credits</span>
+        </div>
+    </div>
+</body>
+</html>
+
+
+# Файл "app\src\views\about.py":
+
+import streamlit as st
+from services.resource import ResourceService
+
+context = {
+    "image_base64": ResourceService.load_image("animatica_about.svg"),
+    "email_link": "mailto:prostolex2004@mail.ru",
+    "telegram_link": "https://t.me/keffirchk",
+    "linkedin_link": "https://www.linkedin.com/in/alexey-klimovich-30744b249/",
+    "developer_name": "Klimovich Alexey",
+    "developer_info": "4th-year Computer Science student specializing in Computing Machines, Systems, and Networks",
+}
+
+ResourceService.load_styles("about.css")
+template = ResourceService.load_template("about/about.html")
+st.markdown(template.format(**context), unsafe_allow_html=True)
+
+
+
+# Файл "app\src\views\auth.py":
+
+import streamlit as st
+from renders.auth import AuthRender
+from services.resource import ResourceService
+
+# Load styles and templates
+ResourceService.load_styles("auth.css")
+templates = {
+    "main_container": ResourceService.load_template("auth/main_container.html"),
+    "auth_header": ResourceService.load_template("auth/header.html"),
+    "login_column": ResourceService.load_template("auth/login_column.html"),
+    "register_column": ResourceService.load_template("auth/register_column.html"),
+}
+
+render = AuthRender(templates)
+
+if st.session_state.get("logged_in", False):
+    st.success(f"Welcome back, {st.session_state.username}!")
+    st.rerun()
+
+st.markdown(templates["main_container"], unsafe_allow_html=True)
+st.markdown(templates["auth_header"], unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
+with col1:
+    render.render_login_form()
+with col2:
+    render.render_register_form()
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+# Файл "app\src\views\home.py":
+
+import streamlit as st
+from renders.home import HomeRender
+from services.cookie import CookieService
+from services.resource import ResourceService
+
+# Load styles and templates
+ResourceService.load_styles("home.css")
+templates = {
+    "subscription": ResourceService.load_template("home/subscription_required.html"),
+    "driving_video": ResourceService.load_template("home/driving_video.html"),
+    "header": ResourceService.load_template("home/generation_header.html"),
+}
+
+render = HomeRender(templates)
+query_balance = CookieService.controller.get("query_balance")
+
+# Check subscription
+if (query_balance is None or query_balance == 0) and not st.session_state.animation_result:
+    render.render_subscription_required()
+else:
+    st.markdown(templates["header"], unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        render.render_image_upload()
+    with col2:
+        render.render_video_upload()
+
+    st.markdown("---")
+    render.render_generate_button()
+
+    if st.session_state.animation_result:
+        st.markdown(templates["header"], unsafe_allow_html=True)
+        st.video(st.session_state.animation_result)
+        render.render_download_button()
+
+
+
+# Файл "app\src\views\pricing.py":
+
+import time
+
+import streamlit as st
+from renders.pricing import PricingRender
+from services.auth import AuthService
+from services.resource import ResourceService
+
+# Load styles and templates
+ResourceService.load_styles("pricing.css")
+templates = {
+    "header": ResourceService.load_template("pricing/header.html"),
+    "plan_card": ResourceService.load_template("pricing/plan_card.html"),
+    "selection": ResourceService.load_template("pricing/selection_message.html"),
+    "checkout_button": ResourceService.load_template("pricing/checkout_button.html"),
+}
+
+st.markdown(templates["header"], unsafe_allow_html=True)
+render = PricingRender(templates)
+
+if not render.products:
+    st.warning("No subscription plans available.")
+    time.sleep(3)
+    AuthService.logout()
+
+with st.container():
+    cols = st.columns(len(render.products))
+    for col, product in zip(cols, render.products):
+        render.render_plan_card(product, col)
+
+if st.session_state.selected_product_id and st.session_state.selected_price_id:
+    selected_product = next((p for p in render.products if p["id"] == st.session_state.selected_product_id), None)
+    if selected_product:
+        render.render_subscribe_button(selected_product)
+
+
+
+# Файл "app\src\views\__init__.py":
+
+import streamlit as st
+
+auth_page = st.Page(
+    page="views/auth.py",
+    title="Authentication",
+    icon=":material/login:",
+)
+
+home_page = st.Page(
+    page="views/home.py",
+    title="Home",
+    icon=":material/home:",
+)
+
+about_page = st.Page(
+    page="views/about.py",
+    title="About",
+    icon=":material/info:",
+)
+
+pricing_page = st.Page(
+    page="views/pricing.py",
+    title="Pricing",
+    icon=":material/payments:",
+)
+
+

@@ -1,0 +1,2266 @@
+
+# Файл ".pre-commit-config.yaml":
+
+repos:
+  - repo: https://github.com/pre-commit/mirrors-isort
+    rev: v5.10.1
+    hooks:
+      - id: isort
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+
+
+
+# Файл "docker-compose.yml":
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: animatica
+    networks:
+      - animatica-net
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: pg_isready -d postgres -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  api:
+    container_name: api
+    build:
+      context: app/
+      args:
+        BUILD_MODE: development
+    volumes:
+      - ./app:/app
+    restart: always
+    ports:
+      - "8080:80"
+    networks:
+      - animatica-net
+    env_file:
+      - env/api.env
+      - env/auth.env
+      - env/db.env
+      - env/ml_engine.env
+      - env/stripe.env
+    depends_on:
+      - db
+      - ml-engine
+    command: ["/entrypoint.sh"]
+
+  ml-engine:
+    container_name: ml-engine
+    image: kefirchk/animatica-ml-engine:latest
+    ports:
+      - "9080:90"
+    networks:
+      - animatica-net
+    restart: always
+    env_file:
+      - env/ml_engine.env
+
+volumes:
+  pg_data:
+
+networks:
+  animatica-net:
+    driver: bridge
+
+
+
+# Файл "pyproject.toml":
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+multi_line_output = 3
+include_trailing_comma = true
+
+
+
+# Файл "app\alembic.ini":
+
+# A generic, single database configuration.
+
+[alembic]
+# path to migration scripts.
+# Use forward slashes (/) also on windows to provide an os agnostic path
+script_location = alembic
+
+# template used to generate migration file names; The default value is %%(rev)s_%%(slug)s
+# Uncomment the line below if you want the files to be prepended with date and time
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
+
+# sys.path path, will be prepended to sys.path if present.
+# defaults to the current working directory.
+prepend_sys_path = .
+
+# timezone to use when rendering the date within the migration file
+# as well as the filename.
+# If specified, requires the python>=3.9 or backports.zoneinfo library and tzdata library.
+# Any required deps can installed by adding `alembic[tz]` to the pip requirements
+# string value is passed to ZoneInfo()
+# leave blank for localtime
+# timezone =
+
+# max length of characters to apply to the "slug" field
+# truncate_slug_length = 40
+
+# set to 'true' to run the environment during
+# the 'revision' command, regardless of autogenerate
+# revision_environment = false
+
+# set to 'true' to allow .pyc and .pyo files without
+# a source .py file to be detected as revisions in the
+# versions/ directory
+# sourceless = false
+
+# version location specification; This defaults
+# to alembic/versions.  When using multiple version
+# directories, initial revisions must be specified with --version-path.
+# The path separator used here should be the separator specified by "version_path_separator" below.
+# version_locations = %(here)s/bar:%(here)s/bat:alembic/versions
+
+# version path separator; As mentioned above, this is the character used to split
+# version_locations. The default within new alembic.ini files is "os", which uses os.pathsep.
+# If this key is omitted entirely, it falls back to the legacy behavior of splitting on spaces and/or commas.
+# Valid values for version_path_separator are:
+#
+# version_path_separator = :
+# version_path_separator = ;
+# version_path_separator = space
+# version_path_separator = newline
+#
+# Use os.pathsep. Default configuration used for new projects.
+version_path_separator = os
+
+# set to 'true' to search source files recursively
+# in each "version_locations" directory
+# new in Alembic version 1.10
+# recursive_version_locations = false
+
+# the output encoding used when revision files
+# are written from script.py.mako
+# output_encoding = utf-8
+
+sqlalchemy.url = driver://user:pass@localhost/dbname
+
+
+[post_write_hooks]
+# post_write_hooks defines scripts or Python functions that are run
+# on newly generated revision scripts.  See the documentation for further
+# detail and examples
+
+# format using "black" - use the console_scripts runner, against the "black" entrypoint
+# hooks = black
+# black.type = console_scripts
+# black.entrypoint = black
+# black.options = -l 79 REVISION_SCRIPT_FILENAME
+
+# lint with attempts to fix using "ruff" - use the exec runner, execute a binary
+# hooks = ruff
+# ruff.type = exec
+# ruff.executable = %(here)s/.venv/bin/ruff
+# ruff.options = check --fix REVISION_SCRIPT_FILENAME
+
+# Logging configuration
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARNING
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARNING
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S
+
+
+
+# Файл "app\entrypoint.sh":
+
+#!/bin/sh
+
+echo "🔄 Waiting for PostgreSQL..."
+
+until pg_isready -h db -p 5432 -U "$POSTGRES_USER"; do
+  echo "⏳ DB is not ready - wait 5 seconds..."
+  sleep 5
+done
+
+echo "✅ DB is available!"
+
+echo "🛠 Running Alembic migrations..."
+alembic upgrade head || { echo "❌ Alembic migration failed"; exit 1; }
+
+echo "🚀 Starting FastAPI server..."
+exec uvicorn src.main:app --host 0.0.0.0 --port 80 --reload
+
+
+
+# Файл "app\alembic\env.py":
+
+import asyncio
+from logging.config import fileConfig
+
+from alembic import context
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+from src.infrastructure.configs import DBConfig
+from src.infrastructure.models import Base
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+config.set_main_option("sqlalchemy.url", DBConfig().db_conn_url)
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# add your model's MetaData object here
+# for 'autogenerate' support
+# from myapp import mymodel
+target_metadata = Base.metadata
+
+# other values from the config, defined by the needs of env.py,
+# can be acquired:
+# my_important_option = config.get_main_option("my_important_option")
+# ... etc.
+
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    """In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    """
+
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
+
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+
+
+# Файл "app\alembic\script.py.mako":
+
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+${imports if imports else ""}
+
+# revision identifiers, used by Alembic.
+revision: str = ${repr(up_revision)}
+down_revision: Union[str, None] = ${repr(down_revision)}
+branch_labels: Union[str, Sequence[str], None] = ${repr(branch_labels)}
+depends_on: Union[str, Sequence[str], None] = ${repr(depends_on)}
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    ${downgrades if downgrades else "pass"}
+
+
+
+# Файл "app\alembic\versions\2025_03_30_2147-bced652ab008_init.py":
+
+"""Init
+
+Revision ID: bced652ab008
+Revises:
+Create Date: 2025-03-30 21:47:24.778697
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "bced652ab008"
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "subscription_feature",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("description", sa.String(length=255), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("description"),
+    )
+    op.create_table(
+        "subscription_type",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column(
+            "name",
+            sa.Enum("BASIC", "STANDARD", "PREMIUM", "TRIAL", "EXPIRED", name="subscriptiontypeenum"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("name"),
+    )
+    op.create_table(
+        "user",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("username", sa.String(length=255), nullable=False),
+        sa.Column("hashed_password", sa.String(length=255), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("username"),
+    )
+    op.create_table(
+        "subscription",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("subscription_type_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["subscription_type_id"],
+            ["subscription_type.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["user.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_table(
+        "subscription_type_features",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("subscription_type_id", sa.Integer(), nullable=False),
+        sa.Column("subscription_feature_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["subscription_feature_id"],
+            ["subscription_feature.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["subscription_type_id"],
+            ["subscription_type.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table("subscription_type_features")
+    op.drop_table("subscription")
+    op.drop_table("user")
+    op.drop_table("subscription_type")
+    op.drop_table("subscription_feature")
+    # ### end Alembic commands ###
+
+
+
+# Файл "app\alembic\versions\2025_03_31_1818-3632c608b4ab_updated_tables_for_subscriptions.py":
+
+"""Updated tables for subscriptions
+
+Revision ID: 3632c608b4ab
+Revises: bced652ab008
+Create Date: 2025-03-31 18:18:43.878327
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "3632c608b4ab"
+down_revision: Union[str, None] = "bced652ab008"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "user_subscription",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("subscription_type_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["subscription_type_id"],
+            ["subscription_type.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["user.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.drop_table("subscription")
+    op.add_column("subscription_type", sa.Column("price", sa.Float(precision=2), nullable=False))
+    op.add_column("subscription_type", sa.Column("discount", sa.Float(precision=2), nullable=True))
+    op.add_column("subscription_type", sa.Column("currency", sa.String(length=3), nullable=False))
+    op.drop_constraint("user_username_key", "user", type_="unique")
+    op.create_index(op.f("ix_user_username"), "user", ["username"], unique=True)
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f("ix_user_username"), table_name="user")
+    op.create_unique_constraint("user_username_key", "user", ["username"])
+    op.drop_column("subscription_type", "currency")
+    op.drop_column("subscription_type", "discount")
+    op.drop_column("subscription_type", "price")
+    op.create_table(
+        "subscription",
+        sa.Column("id", sa.INTEGER(), autoincrement=True, nullable=False),
+        sa.Column("subscription_type_id", sa.INTEGER(), autoincrement=False, nullable=False),
+        sa.Column("user_id", sa.INTEGER(), autoincrement=False, nullable=False),
+        sa.ForeignKeyConstraint(
+            ["subscription_type_id"], ["subscription_type.id"], name="subscription_subscription_type_id_fkey"
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["user.id"], name="subscription_user_id_fkey"),
+        sa.PrimaryKeyConstraint("id", name="subscription_pkey"),
+    )
+    op.drop_table("user_subscription")
+    # ### end Alembic commands ###
+
+
+
+# Файл "app\alembic\versions\2025_03_31_2022-d39146a59f9c_extended_subscriptions_tables.py":
+
+"""Extended subscriptions tables
+
+Revision ID: d39146a59f9c
+Revises: 3632c608b4ab
+Create Date: 2025-03-31 20:22:04.916276
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "d39146a59f9c"
+down_revision: Union[str, None] = "3632c608b4ab"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column("subscription_type", sa.Column("total_credits", sa.Integer(), nullable=True))
+    op.add_column(
+        "subscription_type", sa.Column("duration_days", sa.Integer(), nullable=True, comment="Duration in days")
+    )
+    op.alter_column(
+        "subscription_type", "price", existing_type=sa.REAL(), type_=sa.Float(precision=2), existing_nullable=False
+    )
+    op.alter_column(
+        "subscription_type", "discount", existing_type=sa.REAL(), type_=sa.Float(precision=2), existing_nullable=True
+    )
+    op.add_column("user_subscription", sa.Column("remaining_credits", sa.Integer(), nullable=True))
+    op.add_column("user_subscription", sa.Column("expired_at", sa.DateTime(), nullable=True))
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_column("user_subscription", "expired_at")
+    op.drop_column("user_subscription", "remaining_credits")
+    op.alter_column(
+        "subscription_type", "discount", existing_type=sa.Float(precision=2), type_=sa.REAL(), existing_nullable=True
+    )
+    op.alter_column(
+        "subscription_type", "price", existing_type=sa.Float(precision=2), type_=sa.REAL(), existing_nullable=False
+    )
+    op.drop_column("subscription_type", "duration_days")
+    op.drop_column("subscription_type", "total_credits")
+    # ### end Alembic commands ###
+
+
+
+# Файл "app\alembic\versions\2025_03_31_2048-91b40a6a7ccf_added_constraits_for_subscriptions.py":
+
+"""Added constraits for subscriptions
+
+Revision ID: 91b40a6a7ccf
+Revises: d39146a59f9c
+Create Date: 2025-03-31 20:48:57.344451
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "91b40a6a7ccf"
+down_revision: Union[str, None] = "d39146a59f9c"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.alter_column(
+        "subscription_type", "price", existing_type=sa.REAL(), type_=sa.Float(precision=2), existing_nullable=False
+    )
+    op.alter_column(
+        "subscription_type", "discount", existing_type=sa.REAL(), type_=sa.Float(precision=2), existing_nullable=True
+    )
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.alter_column(
+        "subscription_type", "discount", existing_type=sa.Float(precision=2), type_=sa.REAL(), existing_nullable=True
+    )
+    op.alter_column(
+        "subscription_type", "price", existing_type=sa.Float(precision=2), type_=sa.REAL(), existing_nullable=False
+    )
+    # ### end Alembic commands ###
+
+
+
+# Файл "app\alembic\versions\2025_04_01_0942-6dc4ea54e990_added_stripe_link_to_subscriptiontype.py":
+
+"""Added stripe_link to SubscriptionType
+
+Revision ID: 6dc4ea54e990
+Revises: 91b40a6a7ccf
+Create Date: 2025-04-01 09:42:35.809002
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "6dc4ea54e990"
+down_revision: Union[str, None] = "91b40a6a7ccf"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.add_column("subscription_type", sa.Column("stripe_link", sa.String(), nullable=True))
+    op.create_unique_constraint(None, "subscription_type", ["stripe_link"])
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_constraint(None, "subscription_type", type_="unique")
+    op.drop_column("subscription_type", "stripe_link")
+    # ### end Alembic commands ###
+
+
+
+# Файл "app\alembic\versions\2025_04_11_1747-93ced1d205a8_simplified_the_db_schema_by_deleting_.py":
+
+"""Simplified the DB schema by deleting subscription tables
+
+Revision ID: 93ced1d205a8
+Revises: 6dc4ea54e990
+Create Date: 2025-04-11 17:47:36.547581
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers, used by Alembic.
+revision: str = "93ced1d205a8"
+down_revision: Union[str, None] = "6dc4ea54e990"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "subscription",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("remaining_queries", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["user.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.drop_table("subscription_type_features")
+    op.drop_table("subscription_feature")
+    op.drop_table("user_subscription")
+    op.drop_table("subscription_type")
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "subscription_feature",
+        sa.Column(
+            "id",
+            sa.INTEGER(),
+            server_default=sa.text("nextval('subscription_feature_id_seq'::regclass)"),
+            autoincrement=True,
+            nullable=False,
+        ),
+        sa.Column("description", sa.VARCHAR(length=255), autoincrement=False, nullable=False),
+        sa.PrimaryKeyConstraint("id", name="subscription_feature_pkey"),
+        sa.UniqueConstraint("description", name="subscription_feature_description_key"),
+        postgresql_ignore_search_path=False,
+    )
+    op.create_table(
+        "subscription_type",
+        sa.Column("id", sa.INTEGER(), autoincrement=True, nullable=False),
+        sa.Column(
+            "name",
+            postgresql.ENUM("BASIC", "STANDARD", "PREMIUM", "TRIAL", "EXPIRED", name="subscriptiontypeenum"),
+            autoincrement=False,
+            nullable=False,
+        ),
+        sa.Column("price", sa.REAL(), autoincrement=False, nullable=False),
+        sa.Column("discount", sa.REAL(), autoincrement=False, nullable=True),
+        sa.Column("currency", sa.VARCHAR(length=3), autoincrement=False, nullable=False),
+        sa.Column("total_credits", sa.INTEGER(), autoincrement=False, nullable=True),
+        sa.Column("duration_days", sa.INTEGER(), autoincrement=False, nullable=True, comment="Duration in days"),
+        sa.Column("stripe_link", sa.VARCHAR(), autoincrement=False, nullable=True),
+        sa.PrimaryKeyConstraint("id", name="subscription_type_pkey"),
+        sa.UniqueConstraint("name", name="subscription_type_name_key"),
+        sa.UniqueConstraint("stripe_link", name="subscription_type_stripe_link_key"),
+    )
+    op.create_table(
+        "subscription_type_features",
+        sa.Column("id", sa.INTEGER(), autoincrement=True, nullable=False),
+        sa.Column("subscription_type_id", sa.INTEGER(), autoincrement=False, nullable=False),
+        sa.Column("subscription_feature_id", sa.INTEGER(), autoincrement=False, nullable=False),
+        sa.ForeignKeyConstraint(
+            ["subscription_feature_id"],
+            ["subscription_feature.id"],
+            name="subscription_type_features_subscription_feature_id_fkey",
+        ),
+        sa.ForeignKeyConstraint(
+            ["subscription_type_id"],
+            ["subscription_type.id"],
+            name="subscription_type_features_subscription_type_id_fkey",
+        ),
+        sa.PrimaryKeyConstraint("id", name="subscription_type_features_pkey"),
+    )
+    op.create_table(
+        "user_subscription",
+        sa.Column("id", sa.INTEGER(), autoincrement=True, nullable=False),
+        sa.Column("subscription_type_id", sa.INTEGER(), autoincrement=False, nullable=False),
+        sa.Column("user_id", sa.INTEGER(), autoincrement=False, nullable=False),
+        sa.Column("remaining_credits", sa.INTEGER(), autoincrement=False, nullable=True),
+        sa.Column("expired_at", postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
+        sa.ForeignKeyConstraint(
+            ["subscription_type_id"], ["subscription_type.id"], name="user_subscription_subscription_type_id_fkey"
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["user.id"], name="user_subscription_user_id_fkey"),
+        sa.PrimaryKeyConstraint("id", name="user_subscription_pkey"),
+    )
+
+    op.drop_table("subscription")
+    # ### end Alembic commands ###
+
+
+
+# Файл "app\src\main.py":
+
+import logging
+from contextlib import asynccontextmanager
+
+import src
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from src.domain.entities.enums import LogLevelEnum
+from src.infrastructure.api import router as api_router
+from src.infrastructure.configs import APIConfig
+from src.infrastructure.exceptions.handlers import (
+    app_exception_handler,
+    exception_handlers,
+)
+from starlette.middleware.sessions import SessionMiddleware
+
+logging.basicConfig(format="[PID:%(process)d] %(pathname)s:%(lineno)d %(message)s", level=logging.INFO)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
+
+app = FastAPI(
+    title=f"{APIConfig().MODE.capitalize()} Animatica Backend API",
+    description="This API is designed for the Animatica application.",
+    swagger_ui_parameters={"displayRequestDuration": True},
+    version=src.__version__,
+    debug=(APIConfig().LOG_LEVEL == LogLevelEnum.DEBUG),
+)
+
+app.add_middleware(SessionMiddleware, secret_key=APIConfig().SESSION_SECRET_KEY)
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=APIConfig().allowed_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api")
+
+for exc_type in exception_handlers:
+    app.add_exception_handler(exc_type, app_exception_handler)
+
+
+
+# Файл "app\src\__init__.py":
+
+__version__ = "0.0.0"
+
+
+
+# Файл "app\src\domain\__init__.py":
+
+
+
+
+# Файл "app\src\domain\entities\auth.py":
+
+from pydantic import BaseModel
+
+
+class UserAuthInfo(BaseModel):
+    sub_id: str
+
+
+
+# Файл "app\src\domain\entities\enums.py":
+
+from enum import StrEnum
+
+
+class APIModeEnum(StrEnum):
+    LOCAL = "local"
+    DEV = "dev"
+    STAGE = "stage"
+    PROD = "prod"
+
+
+class LogLevelEnum(StrEnum):
+    INFO = "info"
+    DEBUG = "debug"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class TokenType(StrEnum):
+    ACCESS = "access"
+    REFRESH = "refresh"
+
+
+
+# Файл "app\src\domain\entities\request.py":
+
+from pydantic import BaseModel
+
+
+class RequestModel(BaseModel):
+    pass
+
+
+
+# Файл "app\src\domain\entities\response.py":
+
+from pydantic import BaseModel
+from src.infrastructure.exceptions.handlers import handle_exception
+from starlette.responses import JSONResponse
+from starlette.status import HTTP_200_OK
+
+
+class ResponseModel(BaseModel):
+    pass
+
+
+class ResponseFailure:
+    def __init__(self, err_msg: str, status_code: int) -> None:
+        self.err_msg = err_msg
+        self.status = status_code
+
+    @classmethod
+    def build(cls, exc: Exception) -> JSONResponse:
+        return JSONResponse(*handle_exception(exc))
+
+
+class ResponseSuccess:
+    def __init__(self, payload: ResponseModel, status: int) -> None:
+        self.payload = payload
+        self.status = status
+
+    @classmethod
+    def build(cls, payload: ResponseModel | list[ResponseModel], status: int = HTTP_200_OK, **kwargs) -> JSONResponse:
+        if isinstance(payload, list):
+            content = [item.model_dump(**kwargs) for item in payload]
+        else:
+            content = payload.model_dump(**kwargs)
+
+        return JSONResponse(content=content, status_code=status)
+
+
+
+# Файл "app\src\domain\entities\subscription.py":
+
+from pydantic import BaseModel, Field
+
+
+class Subscription(BaseModel):
+    subscription_id: int = Field(gt=0)
+    user_id: int = Field(gt=0)
+    remaining_queries: int = Field(ge=0)
+
+
+
+# Файл "app\src\domain\entities\user.py":
+
+from pydantic import BaseModel, ConfigDict
+
+
+class UserRead(BaseModel):
+    username: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+
+# Файл "app\src\domain\entities\__init__.py":
+
+
+
+
+# Файл "app\src\domain\interfaces\db_repository.py":
+
+from abc import ABC
+
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm.session import sessionmaker
+from src.infrastructure.configs import DBConfig
+
+engine = create_async_engine(
+    DBConfig().db_conn_url,
+    pool_size=10,
+    max_overflow=20,
+)
+SessionFactory = sessionmaker(bind=engine, class_=AsyncSession)
+
+
+class IDBRepository(ABC):
+    async def __aenter__(self) -> "IDBRepository":
+        self.async_session: AsyncSession = SessionFactory()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_val:
+            await self.async_session.rollback()
+            await self.async_session.close()
+            if exc_type == OperationalError:
+                raise ConnectionError("Could not connect to DataBase instance")
+            return
+        await self.async_session.commit()
+        await self.async_session.close()
+
+
+
+# Файл "app\src\domain\interfaces\use_case.py":
+
+from abc import ABC, abstractmethod
+
+from src.domain.entities.response import ResponseFailure, ResponseSuccess
+
+
+class IUseCase(ABC):
+    @abstractmethod
+    async def execute(self, *args, **kwargs) -> ResponseSuccess | ResponseFailure:
+        pass
+
+
+
+# Файл "app\src\domain\interfaces\__init__.py":
+
+from .db_repository import IDBRepository
+from .use_case import IUseCase
+
+
+
+# Файл "app\src\domain\usecases\__init__.py":
+
+
+
+
+# Файл "app\src\domain\usecases\animation\animate_image_by_video.py":
+
+import httpx
+from fastapi import UploadFile
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import ResponseFailure
+from src.domain.interfaces import IUseCase
+from src.infrastructure.configs import MLEngineConfig
+from src.infrastructure.exceptions.exceptions import MLEngineException
+from src.infrastructure.repositories import (
+    SubscriptionRepository,
+    UserRepository,
+)
+from starlette.responses import JSONResponse, StreamingResponse
+
+
+class AnimateImageByVideoUseCase(IUseCase):
+    class Request(RequestModel):
+        user: UserAuthInfo
+        source_image: UploadFile
+        driving_video: UploadFile
+
+    def __init__(self):
+        self.ml_engine_config = MLEngineConfig()
+        self.user_repository = UserRepository()
+        self.subscription_repository = SubscriptionRepository()
+
+    async def execute(self, request: Request) -> StreamingResponse | JSONResponse:
+        try:
+            source_image = request.source_image
+            driving_video = request.driving_video
+            files = {
+                "source_image": (source_image.filename, await source_image.read(), source_image.content_type),
+                "driving_video": (driving_video.filename, await driving_video.read(), driving_video.content_type),
+            }
+            async with self.user_repository as repository:
+                user = await repository.get_user_by_username(request.user.sub_id)
+                user_id = user.id
+
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.post(
+                    f"{self.ml_engine_config.BASE_URL}/api/fomm/video",
+                    files=files,
+                    headers={"X-ML-Engine-Key": self.ml_engine_config.ML_ENGINE_KEY},
+                )
+                if response.status_code != 200:
+                    detail = await response.aread()
+                    raise MLEngineException(detail.decode())
+
+                async with self.subscription_repository as repository:
+                    subscription = await repository.get_one_by_user_id(user_id=user_id)
+                    await repository.update_one(
+                        existing_subscription=subscription,
+                        queries=-1,
+                    )
+
+                return StreamingResponse(response.aiter_bytes(), media_type="video/mp4")
+
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\animation\__init__.py":
+
+from .animate_image_by_video import AnimateImageByVideoUseCase
+
+
+
+# Файл "app\src\domain\usecases\auth\login.py":
+
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.interfaces import IUseCase
+from src.infrastructure.configs.auth_config import AuthConfig
+from src.infrastructure.exceptions.exceptions import (
+    InvalidCredentialsException,
+)
+from src.infrastructure.services.auth import AuthService
+from src.infrastructure.services.auth.token import TokenService
+from starlette.responses import JSONResponse
+
+
+class UserLoginUseCase(IUseCase):
+    class Request(RequestModel):
+        username: str
+        password: str
+
+    class Response(ResponseModel):
+        token_name: str
+        refresh_token: str
+        access_token: str
+        access_expires_in: int
+        refresh_expires_in: int
+
+    def __init__(self) -> None:
+        self.auth_service = AuthService()
+        self.token_service = TokenService()
+        self.auth_config = AuthConfig()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            user = await self.auth_service.authenticate_user(request.username, request.password)
+            if not user:
+                raise InvalidCredentialsException("Invalid username or password")
+
+            token_data = await self.token_service.generate_tokens(user.username)
+
+            return ResponseSuccess.build(
+                self.Response(
+                    token_name="Bearer",
+                    access_token=token_data["access_token"],
+                    refresh_token=token_data["refresh_token"],
+                    access_expires_in=token_data["access_expires_in"],
+                    refresh_expires_in=token_data["refresh_expires_in"],
+                )
+            )
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\auth\signup.py":
+
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.interfaces import IUseCase
+from src.infrastructure.exceptions.exceptions import UserAlreadyExistsException
+from src.infrastructure.repositories.user_repository import UserRepository
+from starlette import status
+from starlette.responses import JSONResponse
+
+
+class UserSignUpUseCase(IUseCase):
+    class Request(RequestModel):
+        password: str
+        username: str
+
+    class Response(ResponseModel):
+        pass
+
+    def __init__(self) -> None:
+        self.user_repository = UserRepository()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            async with self.user_repository as repository:
+                if await repository.get_user_by_username(request.username):
+                    raise UserAlreadyExistsException(f"Username '{request.username}' already exists")
+
+                await repository.create_user(username=request.username, password=request.password)
+
+            return ResponseSuccess.build(self.Response(), status=status.HTTP_201_CREATED)
+
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\auth\__init__.py":
+
+from .login import UserLoginUseCase
+from .signup import UserSignUpUseCase
+
+
+
+# Файл "app\src\domain\usecases\payments\create_checkout_session.py":
+
+import logging
+
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.interfaces import IUseCase
+from src.infrastructure.configs import APIConfig
+from src.infrastructure.repositories.stripe_repository import StripeRepository
+from starlette.responses import JSONResponse
+
+log = logging.getLogger(__name__)
+
+
+class CreateCheckoutSessionUseCase(IUseCase):
+    class Request(RequestModel):
+        user: UserAuthInfo
+        price_id: str
+
+    class Response(ResponseModel):
+        checkout_session: dict
+
+    def __init__(self):
+        self.redirect_url = f"{APIConfig().FRONTEND_BASE_URL}/pricing"
+        self.stripe_repository = StripeRepository()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            log.info(f"Creating checkout session with price_id: {request.price_id}")
+
+            params = {
+                "payment_method_types": ["card"],
+                "line_items": [{"price": request.price_id, "quantity": 1}],
+                "mode": "payment",
+                "success_url": f"{self.redirect_url}?success=true",
+                "cancel_url": f"{self.redirect_url}?canceled=true",
+            }
+            checkout_session = await self.stripe_repository.create_checkout_session(params)
+
+            return ResponseSuccess.build(self.Response(checkout_session=checkout_session))
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\payments\create_payment.py":
+
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.interfaces import IUseCase
+from src.infrastructure.configs import APIConfig
+from src.infrastructure.exceptions.exceptions import (
+    StripeException,
+    StripePaymentException,
+)
+from src.infrastructure.repositories import (
+    SubscriptionRepository,
+    UserRepository,
+)
+from src.infrastructure.repositories.stripe_repository import StripeRepository
+from starlette.responses import JSONResponse
+
+
+class CreatePaymentUseCase(IUseCase):
+    class Request(RequestModel):
+        user: UserAuthInfo
+        session_id: str
+        product_id: str
+
+    class Response(ResponseModel):
+        remaining_queries: int
+        session_id: str
+
+    def __init__(self):
+        self.redirect_url = f"{APIConfig().FRONTEND_BASE_URL}/pricing"
+        self.stripe_repository = StripeRepository()
+        self.subscription_repository = SubscriptionRepository()
+        self.user_repository = UserRepository()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            product = await self.stripe_repository.get_product(request.product_id)
+            checkout_session = await self.stripe_repository.get_checkout_session(request.session_id)
+            if checkout_session.payment_status != "paid":
+                raise StripePaymentException()
+
+            queries_amount = int(product.metadata.get("queries", 0))
+            if queries_amount <= 0:
+                raise StripeException("Invalid queries amount in product metadata", 400)
+
+            async with self.user_repository as repository:
+                user = await repository.get_user_by_username(request.user.sub_id)
+                user_id = user.id
+
+            async with self.subscription_repository as repository:
+                subscription = await repository.get_one_by_user_id(user_id=user_id)
+                if subscription:
+                    subscription = await repository.update_one(
+                        existing_subscription=subscription,
+                        queries=queries_amount,
+                    )
+                else:
+                    subscription = await repository.add_one(
+                        user_id=user_id,
+                        queries=queries_amount,
+                    )
+                remaining_queries = subscription.remaining_queries
+
+            return ResponseSuccess.build(
+                self.Response(remaining_queries=remaining_queries, session_id=checkout_session.id)
+            )
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\payments\get_checkout_session.py":
+
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.interfaces import IUseCase
+from src.infrastructure.repositories.stripe_repository import StripeRepository
+from starlette.responses import JSONResponse
+
+
+class GetCheckoutSessionUseCase(IUseCase):
+    class Request(RequestModel):
+        user: UserAuthInfo
+        session_id: str
+
+    class Response(ResponseModel):
+        checkout_session: dict
+
+    def __init__(self):
+        self.stripe_repository = StripeRepository()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            checkout_session = await self.stripe_repository.get_checkout_session(request.session_id)
+            return ResponseSuccess.build(self.Response(checkout_session=checkout_session))
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\payments\__init__.py":
+
+from .create_checkout_session import CreateCheckoutSessionUseCase
+from .create_payment import CreatePaymentUseCase
+from .get_checkout_session import GetCheckoutSessionUseCase
+
+
+
+# Файл "app\src\domain\usecases\subscriptions\get_current_subscription.py":
+
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.entities.subscription import Subscription
+from src.domain.interfaces import IUseCase
+from src.infrastructure.repositories import (
+    SubscriptionRepository,
+    UserRepository,
+)
+from starlette.responses import JSONResponse
+
+
+class GetCurrentSubscriptionUseCase(IUseCase):
+    class Request(RequestModel):
+        user: UserAuthInfo
+
+    class Response(ResponseModel):
+        subscription: Subscription | None
+
+    def __init__(self):
+        self.user_repository = UserRepository()
+        self.subscription_repository = SubscriptionRepository()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            async with self.user_repository as repository:
+                user = await repository.get_user_by_username(username=request.user.sub_id)
+                user_id = user.id
+
+            subscription = None
+            async with self.subscription_repository as repository:
+                current_subscription = await repository.get_one_by_user_id(user_id=user_id)
+                if current_subscription:
+                    subscription = Subscription(
+                        subscription_id=current_subscription.id,
+                        user_id=current_subscription.id,
+                        remaining_queries=current_subscription.remaining_queries,
+                    )
+
+            return ResponseSuccess.build(self.Response(subscription=subscription))
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\subscriptions\get_limited_subscriptions.py":
+
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.entities.request import RequestModel
+from src.domain.entities.response import (
+    ResponseFailure,
+    ResponseModel,
+    ResponseSuccess,
+)
+from src.domain.interfaces import IUseCase
+from src.infrastructure.configs import StripeConfig
+from src.infrastructure.repositories.stripe_repository import StripeRepository
+from starlette.responses import JSONResponse
+
+
+class GetLimitedSubscriptionsUseCase(IUseCase):
+    class Request(RequestModel):
+        user: UserAuthInfo
+
+    class Response(ResponseModel):
+        object: str
+        data: list[dict]
+        has_more: bool
+        public_key: str
+
+    def __init__(self):
+        self.stripe_repository = StripeRepository()
+        self.stripe_config = StripeConfig()
+
+    async def execute(self, request: Request) -> JSONResponse:
+        try:
+            products = await self.stripe_repository.get_products()
+            return ResponseSuccess.build(self.Response(**products, public_key=self.stripe_config.PUBLIC_KEY))
+        except Exception as exc:
+            return ResponseFailure.build(exc)
+
+
+
+# Файл "app\src\domain\usecases\subscriptions\__init__.py":
+
+from .get_current_subscription import GetCurrentSubscriptionUseCase
+from .get_limited_subscriptions import GetLimitedSubscriptionsUseCase
+
+
+
+# Файл "app\src\infrastructure\__init__.py":
+
+
+
+
+# Файл "app\src\infrastructure\api\__init__.py":
+
+from fastapi import APIRouter
+
+from .v0 import router as v0_router
+
+router = APIRouter()
+router.include_router(v0_router, prefix="/v0")
+
+
+
+# Файл "app\src\infrastructure\api\v0\animation.py":
+
+from typing import Annotated
+
+from fastapi import Depends, File, UploadFile
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.usecases.animation import AnimateImageByVideoUseCase
+from src.infrastructure.api import APIRouter
+from src.infrastructure.services.security.jwt_bearer import JWTBearer
+
+router = APIRouter()
+
+
+@router.post("/video")
+async def animate_image_by_video(
+    use_case: Annotated[AnimateImageByVideoUseCase, Depends(AnimateImageByVideoUseCase)],
+    user: Annotated[UserAuthInfo, Depends(JWTBearer(auto_error=True))],
+    source_image: UploadFile = File(...),
+    driving_video: UploadFile = File(...),
+):
+    return await use_case.execute(use_case.Request(user=user, source_image=source_image, driving_video=driving_video))
+
+
+
+# Файл "app\src\infrastructure\api\v0\auth.py":
+
+from typing import Annotated
+
+from fastapi import Body, Depends
+from pydantic import SecretStr
+from src.domain.usecases.auth import UserLoginUseCase, UserSignUpUseCase
+from src.infrastructure.api import APIRouter
+
+router = APIRouter()
+
+
+@router.post("/login")
+async def login(
+    use_case: Annotated[UserLoginUseCase, Depends(UserLoginUseCase)],
+    username: str = Body(..., min_length=3),
+    password: SecretStr = Body(..., min_length=8),
+):
+    return await use_case.execute(use_case.Request(username=username, password=password.get_secret_value()))
+
+
+@router.post("/signup")
+async def signup(
+    use_case: Annotated[UserSignUpUseCase, Depends(UserSignUpUseCase)],
+    username: str = Body(..., min_length=3),
+    password: SecretStr = Body(..., min_length=8),
+):
+    return await use_case.execute(use_case.Request(username=username, password=password.get_secret_value()))
+
+
+
+# Файл "app\src\infrastructure\api\v0\payments.py":
+
+from typing import Annotated
+
+from fastapi import Body, Depends, Query
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.usecases.payments import (
+    CreateCheckoutSessionUseCase,
+    CreatePaymentUseCase,
+    GetCheckoutSessionUseCase,
+)
+from src.infrastructure.api import APIRouter
+from src.infrastructure.services.security.jwt_bearer import JWTBearer
+
+router = APIRouter()
+
+
+@router.get("/checkout-session")
+async def get_checkout_session(
+    use_case: Annotated[GetCheckoutSessionUseCase, Depends(GetCheckoutSessionUseCase)],
+    user: Annotated[UserAuthInfo, Depends(JWTBearer(auto_error=True))],
+    session_id: str = Query(..., description="Session ID of Stripe checkout session"),
+):
+    return await use_case.execute(use_case.Request(user=user, session_id=session_id))
+
+
+@router.post("/checkout-session")
+async def create_checkout_session(
+    use_case: Annotated[CreateCheckoutSessionUseCase, Depends(CreateCheckoutSessionUseCase)],
+    user: Annotated[UserAuthInfo, Depends(JWTBearer(auto_error=True))],
+    price_id: str = Query(..., description="Price ID of Stripe checkout session"),
+):
+    return await use_case.execute(use_case.Request(user=user, price_id=price_id))
+
+
+@router.post("")
+async def create_payment(
+    use_case: Annotated[CreatePaymentUseCase, Depends(CreatePaymentUseCase)],
+    user: Annotated[UserAuthInfo, Depends(JWTBearer(auto_error=True))],
+    session_id: str = Body(..., description="Session ID of Stripe checkout session"),
+    product_id: str = Body(..., description="Payment Stripe Product ID"),
+):
+    return await use_case.execute(use_case.Request(user=user, session_id=session_id, product_id=product_id))
+
+
+
+# Файл "app\src\infrastructure\api\v0\subscriptions.py":
+
+from typing import Annotated
+
+from fastapi import Depends
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.usecases.subscriptions import (
+    GetCurrentSubscriptionUseCase,
+    GetLimitedSubscriptionsUseCase,
+)
+from src.infrastructure.api import APIRouter
+from src.infrastructure.services.security.jwt_bearer import JWTBearer
+
+router = APIRouter()
+
+
+@router.get("/current")
+async def get_current_subscription(
+    use_case: Annotated[GetCurrentSubscriptionUseCase, Depends(GetCurrentSubscriptionUseCase)],
+    user: Annotated[UserAuthInfo, Depends(JWTBearer(auto_error=True))],
+):
+    return await use_case.execute(use_case.Request(user=user))
+
+
+@router.get("/limited")
+async def get_limited_subscriptions(
+    use_case: Annotated[GetLimitedSubscriptionsUseCase, Depends(GetLimitedSubscriptionsUseCase)],
+    user: Annotated[UserAuthInfo, Depends(JWTBearer(auto_error=True))],
+):
+    return await use_case.execute(use_case.Request(user=user))
+
+
+
+# Файл "app\src\infrastructure\api\v0\__init__.py":
+
+from src.infrastructure.api import APIRouter
+
+from .animation import router as animation_router
+from .auth import router as auth_router
+from .payments import router as payments_router
+from .subscriptions import router as subscriptions_router
+
+router = APIRouter()
+router.include_router(animation_router, prefix="/animation", tags=["Animation"])
+router.include_router(auth_router, prefix="/auth", tags=["Auth"])
+router.include_router(payments_router, prefix="/payments", tags=["Payments"])
+router.include_router(subscriptions_router, prefix="/subscriptions", tags=["Subscriptions"])
+
+
+
+# Файл "app\src\infrastructure\configs\api_config.py":
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from src.domain.entities.enums import APIModeEnum, LogLevelEnum
+
+
+class APIConfig(BaseSettings):
+    BASE_URL: str = Field(..., alias="API_BASE_URL")
+    FRONTEND_BASE_URL: str = Field(..., alias="FRONTEND_BASE_URL")
+    MODE: APIModeEnum = Field(..., alias="API_MODE")
+    LOG_LEVEL: LogLevelEnum = Field(..., alias="LOG_LEVEL")
+    SESSION_SECRET_KEY: str = Field(..., alias="SESSION_SECRET_KEY")
+    LOCALHOST_CLIENT_ORIGIN: str = Field(..., alias="LOCALHOST_CLIENT_ORIGIN")
+    ALLOWED_ORIGINS_STR: str = Field(..., alias="ALLOWED_ORIGINS")
+
+    model_config = SettingsConfigDict(env_file="../env/api.env")
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        origins = {origin.strip() for origin in self.ALLOWED_ORIGINS_STR.split(",")}
+        if self.MODE in (APIModeEnum.LOCAL, APIModeEnum.DEV, APIModeEnum.STAGE):
+            origins.add(self.LOCALHOST_CLIENT_ORIGIN)
+        return sorted(origins)
+
+
+
+# Файл "app\src\infrastructure\configs\auth_config.py":
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AuthConfig(BaseSettings):
+    SECRET_KEY: str = Field(..., alias="SECRET_KEY")
+    ALGORITHM: str = Field(..., alias="ALGORITHM")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(..., alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(..., alias="REFRESH_TOKEN_EXPIRE_DAYS")
+    TOKEN_ISSUER: str = Field(..., alias="TOKEN_ISSUER")
+
+    model_config = SettingsConfigDict(env_file="../env/auth.env")
+
+
+
+# Файл "app\src\infrastructure\configs\db_config.py":
+
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class DBConfig(BaseSettings):
+    DB_HOST: str = Field(..., alias="DB_HOST")
+    DB_PORT: str = Field(..., alias="DB_PORT")
+    DB_NAME: str = Field(..., alias="DB_NAME")
+    DB_USER: str = Field(..., alias="DB_USER")
+    DB_PASS: SecretStr = Field(..., alias="DB_PASS")
+    DB_DRIVER: str = Field("postgresql+asyncpg")
+
+    model_config = SettingsConfigDict(env_file="../env/db.env")
+
+    @property
+    def db_conn_url(self):
+        encoded_password = self.DB_PASS.get_secret_value()
+        connection_url = (
+            f"{self.DB_DRIVER}://"
+            f"{self.DB_USER}:"
+            f"{encoded_password}@"
+            f"{self.DB_HOST}:"
+            f"{self.DB_PORT}/"
+            f"{self.DB_NAME}"
+        )
+        return connection_url
+
+
+
+# Файл "app\src\infrastructure\configs\ml_engine_config.py":
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class MLEngineConfig(BaseSettings):
+    BASE_URL: str = Field(..., alias="ML_ENGINE_BASE_URL")
+    ML_ENGINE_KEY: str = Field(..., alias="ML_ENGINE_KEY")
+    ML_ENGINE_KEY_HEADER: str = Field("X-ML-Engine-Key", alias="ML_ENGINE_KEY_HEADER")
+
+    model_config = SettingsConfigDict(env_file="../env/ml_engine.env")
+
+
+
+# Файл "app\src\infrastructure\configs\stripe_config.py":
+
+import stripe
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class StripeConfig(BaseSettings):
+    PUBLIC_KEY: str = Field(..., alias="STRIPE_PUBLIC_KEY")
+    SECRET_KEY: str = Field(..., alias="STRIPE_SECRET_KEY")
+
+    model_config = SettingsConfigDict(env_file="../env/stripe.env")
+
+
+stripe.api_key = StripeConfig().SECRET_KEY
+
+
+
+# Файл "app\src\infrastructure\configs\__init__.py":
+
+from .api_config import APIConfig
+from .auth_config import AuthConfig
+from .db_config import DBConfig
+from .ml_engine_config import MLEngineConfig
+from .stripe_config import StripeConfig
+
+
+
+# Файл "app\src\infrastructure\exceptions\exceptions.py":
+
+class AuthException(Exception):
+    """Base exception for all errors related to authorization"""
+
+
+class InvalidCredentialsException(AuthException):
+    """Raised when provided credentials (username/password) are invalid."""
+
+
+class UserAlreadyExistsException(AuthException):
+    """Raised when attempting to create a user with an email that already exists."""
+
+
+class ExpiredTokenException(AuthException):
+    """Raised when the token used for authentication has expired."""
+
+
+class InvalidTokenException(AuthException):
+    """Raised when the provided token is invalid or cannot be recognized."""
+
+
+class StripeException(Exception):
+    """Base exception for Stripe product related errors."""
+
+
+class StripePaymentException(StripeException):
+    """Raised when there are issues with payment processing."""
+
+
+class MLEngineException(Exception):
+    """Base exception for all errors related to ML Engine"""
+
+
+
+# Файл "app\src\infrastructure\exceptions\handlers.py":
+
+import logging
+import traceback
+
+from fastapi import Request, status
+from pydantic import ValidationError
+from src.domain.entities.enums import APIModeEnum
+from src.infrastructure.configs import APIConfig
+from src.infrastructure.exceptions.exceptions import *
+from starlette.responses import JSONResponse
+
+log = logging.getLogger(__name__)
+
+
+exception_handlers: dict[type[Exception], callable] = {
+    MLEngineException: lambda x: (status.HTTP_500_INTERNAL_SERVER_ERROR, "ML Engine error"),
+    StripeException: lambda x: (status.HTTP_400_BAD_REQUEST, "Stripe error"),
+    StripePaymentException: lambda x: (status.HTTP_402_PAYMENT_REQUIRED, "Payment not completed or failed"),
+    ExpiredTokenException: lambda x: (status.HTTP_401_UNAUTHORIZED, "Expired token"),
+    InvalidCredentialsException: lambda x: (status.HTTP_401_UNAUTHORIZED, "Invalid credentials"),
+    InvalidTokenException: lambda x: (status.HTTP_401_UNAUTHORIZED, "Invalid token"),
+    UserAlreadyExistsException: lambda x: (status.HTTP_409_CONFLICT, "User already exists"),
+    ValidationError: lambda x: (status.HTTP_422_UNPROCESSABLE_ENTITY, x.errors()),
+}
+
+
+def handle_exception(exc: Exception) -> tuple[str, int]:
+    if handler := exception_handlers.get(type(exc)):
+        status_code, message = handler(exc)
+    else:
+        status_code, message = status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal server error"
+
+    log.error(message, exc_info=True)
+
+    if APIConfig().MODE != APIModeEnum.PROD:
+        traceback_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        message = f"{message}: {str(exc)}\n{traceback_text}"
+
+    return message, status_code
+
+
+async def app_exception_handler(request: Request, exc: Exception):
+    message, status_code = handle_exception(exc)
+    return JSONResponse(status_code=status_code, content={"detail": message})
+
+
+
+# Файл "app\src\infrastructure\exceptions\__init__.py":
+
+
+
+
+# Файл "app\src\infrastructure\models\models.py":
+
+from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class Subscription(Base):
+    __tablename__ = "subscription"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    remaining_queries: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+
+# Файл "app\src\infrastructure\models\__init__.py":
+
+from .models import *
+
+
+
+# Файл "app\src\infrastructure\repositories\stripe_repository.py":
+
+import asyncio
+
+import stripe
+from stripe import ListObject, Product
+from stripe.checkout import Session
+
+
+class StripeRepository:
+    @classmethod
+    async def get_products(cls) -> ListObject[Product]:
+        params = {"active": True, "expand": ["data.default_price"]}
+        products = await asyncio.to_thread(stripe.Product.list, **params)
+        return products
+
+    @classmethod
+    async def get_product(cls, product_id: str) -> Product:
+        product = await asyncio.to_thread(stripe.Product.retrieve, product_id)
+        return product
+
+    @classmethod
+    async def get_checkout_session(cls, session_id: str) -> Session:
+        checkout_session = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
+        return checkout_session
+
+    @classmethod
+    async def create_checkout_session(cls, params: dict) -> Session:
+        checkout_session = await asyncio.to_thread(stripe.checkout.Session.create, **params)
+        return checkout_session
+
+
+
+# Файл "app\src\infrastructure\repositories\subscription_repository.py":
+
+from sqlalchemy import select
+from src.domain.interfaces import IDBRepository
+from src.infrastructure.models.models import Subscription
+
+
+class SubscriptionRepository(IDBRepository):
+    async def get_one_by_user_id(self, user_id: int) -> Subscription | None:
+        stmt = select(Subscription).where(Subscription.user_id == user_id)
+        result = await self.async_session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def add_one(self, user_id: int, queries: int) -> Subscription:
+        subscription = Subscription(user_id=user_id, remaining_queries=queries)
+        self.async_session.add(subscription)
+        await self.async_session.flush()
+        return subscription
+
+    async def update_one(self, existing_subscription: Subscription, queries: int) -> Subscription:
+        existing_subscription.remaining_queries += queries
+        await self.async_session.flush()
+        return existing_subscription
+
+
+
+# Файл "app\src\infrastructure\repositories\user_repository.py":
+
+from sqlalchemy import select
+from src.domain.interfaces import IDBRepository
+from src.infrastructure.models.models import User
+from src.infrastructure.services.security.password import PasswordService
+
+
+class UserRepository(IDBRepository):
+    async def create_user(self, username: str, password: str) -> None:
+        """
+        Creates a new user with a hashed password.
+
+        Parameters:
+            username (str): The username of the user.
+            password (str): The plaintext password to be hashed.
+        """
+        user = User(
+            username=username,
+            hashed_password=PasswordService.hash_password(password),
+        )
+        self.async_session.add(user)
+
+    async def get_user_by_username(self, username: str) -> User | None:
+        """
+        Retrieves a user by username.
+
+        This asynchronous method fetches a user from the database that matches the specified username.
+
+        Parameters:
+            username (str):
+                The username of the user to retrieve.
+
+        Returns:
+            User:
+                The user object or None if no such user exists.
+        """
+        query = select(User).where(User.username == username)
+        result = await self.async_session.execute(query)
+        return result.scalars().first()
+
+
+
+# Файл "app\src\infrastructure\repositories\__init__.py":
+
+from .stripe_repository import StripeRepository
+from .subscription_repository import SubscriptionRepository
+from .user_repository import UserRepository
+
+
+
+# Файл "app\src\infrastructure\services\__init__.py":
+
+
+
+
+# Файл "app\src\infrastructure\services\auth\auth.py":
+
+from src.domain.entities.user import UserRead
+from src.infrastructure.repositories import UserRepository
+from src.infrastructure.services.security.password import PasswordService
+
+
+class AuthService:
+    def __init__(self) -> None:
+        self.user_repository = UserRepository()
+        self.password_service = PasswordService()
+
+    async def authenticate_user(self, username: str, password: str) -> UserRead | None:
+        async with self.user_repository as repository:
+            user = await repository.get_user_by_username(username)
+
+            if not user or not self.password_service.verify_password(password, user.hashed_password):
+                return None
+
+            return UserRead.model_validate(user)
+
+
+
+# Файл "app\src\infrastructure\services\auth\token.py":
+
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from src.domain.entities.enums import TokenType
+from src.infrastructure.configs import AuthConfig
+
+
+class TokenService:
+    def __init__(self):
+        self.auth_config = AuthConfig()
+
+    async def generate_tokens(self, username: str) -> dict:
+        """Generate access and refresh tokens"""
+        access_token_expires = timedelta(minutes=self.auth_config.ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_token_expires = timedelta(days=self.auth_config.REFRESH_TOKEN_EXPIRE_DAYS)
+
+        access_token = self._create_token(
+            data={"sub": username},  # username as unique value
+            token_type=TokenType.ACCESS,
+            expires_delta=access_token_expires,
+        )
+
+        refresh_token = self._create_token(
+            data={"sub": username}, token_type=TokenType.REFRESH, expires_delta=refresh_token_expires
+        )
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "access_expires_in": int(access_token_expires.total_seconds()),
+            "refresh_expires_in": int(refresh_token_expires.total_seconds()),
+        }
+
+    def verify_token(self, token: str) -> dict:
+        """Verify JWT token and return payload"""
+        return jwt.decode(
+            token, self.auth_config.SECRET_KEY, algorithms=[self.auth_config.ALGORITHM], options={"verify_exp": True}
+        )
+
+    def _create_token(self, data: dict, token_type: TokenType, expires_delta: timedelta | None = None) -> str:
+        """Base token creation method"""
+        to_encode = data.copy()
+
+        expire = datetime.now(timezone.utc) + (
+            expires_delta if expires_delta else timedelta(minutes=self.auth_config.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+
+        to_encode.update({"exp": expire, "type": token_type, "iss": self.auth_config.TOKEN_ISSUER})
+
+        return jwt.encode(payload=to_encode, key=self.auth_config.SECRET_KEY, algorithm=self.auth_config.ALGORITHM)
+
+
+
+# Файл "app\src\infrastructure\services\auth\__init__.py":
+
+from .auth import AuthService
+from .token import TokenService
+
+
+
+# Файл "app\src\infrastructure\services\security\jwt_bearer.py":
+
+import jwt
+from fastapi import Request, status
+from fastapi.security import HTTPBearer
+from src.domain.entities.auth import UserAuthInfo
+from src.infrastructure.configs import AuthConfig
+from src.infrastructure.exceptions.exceptions import ExpiredTokenException
+from src.infrastructure.services.auth.token import TokenService
+
+
+class JWTBearer(HTTPBearer):
+    def __init__(self, auto_error: bool = True):
+        super().__init__(auto_error=auto_error)
+        self.token_service = TokenService()
+        self.config = AuthConfig()
+
+    async def __call__(self, request: Request = None) -> UserAuthInfo | None:
+        credentials = await super().__call__(request)
+        if not credentials:
+            return None
+
+        try:
+            payload = self.token_service.verify_token(credentials.credentials)
+            return UserAuthInfo(sub_id=payload["sub"])
+        except jwt.PyJWTError:
+            if self.auto_error:
+                raise ExpiredTokenException("Invalid or expired token", status.HTTP_401_UNAUTHORIZED)
+            return None
+
+
+
+# Файл "app\src\infrastructure\services\security\password.py":
+
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class PasswordService:
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """
+        Hashes a plaintext password using bcrypt.
+
+        :param password: The plaintext password to hash.
+        :return: The hashed password.
+        """
+        return pwd_context.hash(password)
+
+    @staticmethod
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """
+        Verifies a plaintext password against a hashed password.
+
+        :param plain_password: The plaintext password.
+        :param hashed_password: The hashed password stored in the database.
+        :return: True if the password is correct, False otherwise.
+        """
+        return pwd_context.verify(plain_password, hashed_password)
+
+
+
+# Файл "app\src\infrastructure\services\security\__init__.py":
+
+
+
+
+# Файл "app\tests\__init__.py":
+
+
+
+
+# Файл "app\tests\integration\__init__.py":
+
+
+
+
+# Файл "app\tests\unit\__init__.py":
+
+
+
+
+# Файл "app\tests\unit\domain\__init__.py":
+
+
+
+
+# Файл "app\tests\unit\domain\usecases\conftest.py":
+
+import json
+import os
+
+import pytest
+
+TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_data")
+
+
+@pytest.fixture
+def file_data():
+    with open(TEST_DATA_DIR + "/some_file.json") as file:
+        return json.load(file)
+
+
+
+# Файл "app\tests\unit\domain\usecases\__init__.py":
+
+
+
+
+# Файл "app\tests\unit\domain\usecases\auth\test_login.py":
+
+class TestUserLoginUseCase:
+    pass
+
+
+
+# Файл "app\tests\unit\domain\usecases\auth\test_signup.py":
+
+class TestUserSignUpUseCase:
+    pass
+
+
+
+# Файл "app\tests\unit\domain\usecases\auth\__init__.py":
+
+
+
+
+# Файл "app\tests\unit\infrastructure\__init__.py":
+
+
+
+
+# Файл "app\tests\unit\infrastructure\api\conftest.py":
+
+import os
+
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from src.main import app
+
+TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_data")
+
+
+@pytest_asyncio.fixture
+async def api_client():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost:80") as client:
+        yield client
+
+
+
+# Файл "app\tests\unit\infrastructure\api\__init__.py":
+
+def test_example():
+    assert 1 + 1 == 2
+
+
+
+# Файл "app\tests\unit\infrastructure\api\v0\test_animation.py":
+
+from unittest.mock import AsyncMock
+
+import pytest
+from src.domain.entities.auth import UserAuthInfo
+from src.domain.usecases.animation import AnimateImageByVideoUseCase
+
+
+class TestAPIAnimation:
+    @pytest.fixture
+    def setup_jwt_bearer(self, mocker):
+        mock_jwt_bearer = mocker.patch(
+            "src.infrastructure.api.v0.animation.JWTBearer.__call__", return_value=UserAuthInfo(sub_id="1")
+        )
+        return mock_jwt_bearer
+
+    @pytest.mark.asyncio
+    async def test__animate_image_by_video__success(self, mocker, api_client, setup_jwt_bearer):
+        mock_execute = mocker.patch.object(
+            AnimateImageByVideoUseCase,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=b"test-data",
+        )
+
+        response = await api_client.post(
+            "/api/v0/animation/video",
+            headers={"Authorization": "Bearer mocked_token"},
+            files={"source_image": b"aaa", "driving_video": b"bbb"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == "test-data"
+        setup_jwt_bearer.assert_called_once()
+        mock_execute.assert_called_once()
+
+
+
+# Файл "app\tests\unit\infrastructure\api\v0\__init__.py":
+
+
+
